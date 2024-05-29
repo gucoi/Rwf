@@ -1,0 +1,18 @@
+[package]
+name = "open_gfw_rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+trust-dns-proto = { version = "0.23.0-alpha.5" }
+clap = { version = "4.2.1", features = ["derive"] }
+env_logger = "0.9"
+log = "0.4"
+config = "0.12"
+serde = "1.0"
+serde_yaml = "0.8"
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+num_cpus = "1.13.0"
