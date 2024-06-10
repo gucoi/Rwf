@@ -30,6 +30,10 @@ pub trait TCPStream {
         data: &[u8],
     ) -> Option<PropUpdate>;
     fn close(&mut self, limited: bool) -> Option<PropUpdate>;
+
+    // fn get_server_lsm<T>(&mut self) -> LineStateMachine<T>;
+    // fn get_client_lsm<T>(&mut self) -> LineStateMachine<T>;
+    // fn get_rev() -> bool;
 }
 
 pub struct UDPInfo {
@@ -42,9 +46,17 @@ pub struct UDPInfo {
 pub trait UDPStream {
     fn feed(&mut self, rev: bool, data: &[u8]) -> Option<PropUpdate>;
     fn close(limited: bool) -> Option<PropUpdate>;
+
+    // fn get_server_lsm<T>() -> LineStateMachine<T>;
+    // fn get_client_lsm<T>() -> LineStateMachine<T>;
+    // fn get_rev() -> bool;
 }
 
-pub trait UDPAnalyzer<T: UDPStream, U: Logger>: Analyzer {
+pub trait UDPAnalyzer<T, U>: Analyzer
+where
+    T: UDPStream,
+    U: Logger,
+{
     fn new_udp(info: UDPInfo, logger: U) -> T;
 }
 
@@ -104,10 +116,10 @@ pub struct PropUpdate {
 }
 
 impl PropUpdate {
-    pub fn new(_prop_type: PropUpdateType, map: JsonValue) -> Self {
+    pub fn new(_prop_type: PropUpdateType, map: &JsonValue) -> Self {
         PropUpdate {
             prop_type: _prop_type,
-            m: map,
+            m: map.clone(),
         }
     }
 }

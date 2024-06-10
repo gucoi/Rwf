@@ -44,8 +44,8 @@ impl CompiledExprRule {
 }
 
 impl ExprRuleset {
-    fn analyzers(&self) -> Vec<Box<dyn AnalyzerInterface::Analyzer>> {
-        self.ans
+    fn analyzers(&self) -> &Vec<Box<dyn AnalyzerInterface::Analyzer>> {
+        &self.ans
     }
 
     fn expr_rule_set_match(&self, info: RulesetInterface::StreamInfo) {}

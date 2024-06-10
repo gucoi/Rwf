@@ -36,6 +36,7 @@ mod engine {
 
 pub use analyzer::interface as AnalyzerInterface;
 pub use analyzer::tcp::fet;
+pub use analyzer::tcp::ssh;
 pub use analyzer::udp::dns;
 pub use analyzer::utils::{bytebuffer as ByteBuffer, lsm as LSM};
 pub use cmd::{error, root};

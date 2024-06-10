@@ -1,11 +1,14 @@
 use serde_json::{json, Value as JsonValue};
 
-use crate::analyzer::utils::lsm::{LSMAction, LSMRun, LineStateMachine};
+use crate::analyzer::utils::lsm::{LSMAction, LineStateMachine};
 use crate::AnalyzerInterface::PropUpdate;
 use crate::AnalyzerInterface::PropUpdateType;
 use crate::AnalyzerInterface::TCPStream;
 use crate::AnalyzerInterface::{new_prop_map, Logger, PropMap};
 use crate::ByteBuffer::ByteBuffer;
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct HTTPAnalyzer {}
 
@@ -25,14 +28,38 @@ pub struct HTTPStream {
     req_map: PropMap,
     req_updated: bool,
     req_buf: ByteBuffer,
-    req_lsm: LineStateMachine<Self>,
+    req_lsm: Rc<RefCell<LineStateMachine<Self>>>,
     req_done: bool,
 
     resp_map: PropMap,
     resp_updated: bool,
     resp_buf: ByteBuffer,
-    resp_lsm: LineStateMachine<Self>,
+    resp_lsm: Rc<RefCell<LineStateMachine<Self>>>,
     resp_done: bool,
+}
+
+impl HTTPStream {
+    pub fn new(logger: Box<dyn Logger>) -> Self {
+        HTTPStream {
+            logger: logger,
+            req_buf: ByteBuffer::new(),
+            req_map: None,
+            req_updated: false,
+            req_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
+                Box::new(parse_request_line),
+                Box::new(parse_request_headers),
+            ]))),
+            req_done: false,
+            resp_buf: ByteBuffer::new(),
+            resp_map: None,
+            resp_updated: false,
+            resp_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
+                Box::new(parse_response_line),
+                Box::new(parse_response_header),
+            ]))),
+            resp_done: false,
+        }
+    }
 }
 
 impl TCPStream for HTTPStream {
@@ -54,24 +81,29 @@ impl TCPStream for HTTPStream {
         if rev {
             self.resp_buf.append(data);
             self.resp_updated = false;
-            let (_, done) = LSMRun(&mut self.resp_lsm, self);
+            let lsm = Rc::clone(&self.resp_lsm);
+            let mut lsm = lsm.borrow_mut();
+            let (_, done) = lsm.lsm_run(self);
             self.resp_done = done;
             if self.resp_updated {
-                update = PropUpdate::new(&PropUpdateType::Merge, &mut self.resp_map.unwrap());
+                update = PropUpdate::new(PropUpdateType::Merge, self.resp_map.as_ref().unwrap());
                 self.resp_updated = false;
             }
         } else {
             self.req_buf.append(data);
             self.req_updated = false;
-            let (_, done) = LSMRun(&mut self.req_lsm, self);
+            let lsm = Rc::clone(&self.req_lsm);
+            let mut lsm = lsm.borrow_mut();
+            let (_, done) = lsm.lsm_run(self);
             self.req_done = done;
             if self.req_updated {
-                update = PropUpdate::new(&PropUpdateType::Merge, &mut self.req_map.unwrap());
+                update = PropUpdate::new(PropUpdateType::Merge, self.req_map.as_ref().unwrap());
                 self.req_updated = false;
             }
         }
         Some(update)
     }
+
     fn close(&mut self, limited: bool) -> Option<crate::AnalyzerInterface::PropUpdate> {
         self.req_buf.reset();
         self.resp_buf.reset();
@@ -213,28 +245,4 @@ pub fn parse_headers(buf: &mut ByteBuffer) -> (LSMAction, PropMap) {
     }
 
     (LSMAction::Next, prop_map)
-}
-
-impl HTTPStream {
-    pub fn new(logger: Box<dyn Logger>) -> Self {
-        HTTPStream {
-            logger: logger,
-            req_buf: ByteBuffer::new(),
-            req_map: None,
-            req_updated: false,
-            req_lsm: LineStateMachine::new(vec![
-                Box::new(parse_request_line),
-                Box::new(parse_request_headers),
-            ]),
-            req_done: false,
-            resp_buf: ByteBuffer::new(),
-            resp_map: None,
-            resp_updated: false,
-            resp_lsm: LineStateMachine::new(vec![
-                Box::new(parse_response_line),
-                Box::new(parse_response_header),
-            ]),
-            resp_done: false,
-        }
-    }
 }
