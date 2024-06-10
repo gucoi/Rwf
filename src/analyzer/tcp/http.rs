@@ -41,7 +41,7 @@ pub struct HTTPStream {
 impl HTTPStream {
     pub fn new(logger: Box<dyn Logger>) -> Self {
         HTTPStream {
-            logger: logger,
+            logger,
             req_buf: ByteBuffer::new(),
             req_map: None,
             req_updated: false,
@@ -55,7 +55,7 @@ impl HTTPStream {
             resp_updated: false,
             resp_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
                 Box::new(parse_response_line),
-                Box::new(parse_response_header),
+                Box::new(parse_response_headers),
             ]))),
             resp_done: false,
         }
@@ -70,46 +70,51 @@ impl TCPStream for HTTPStream {
         _end: bool,
         skip: i32,
         data: &[u8],
-    ) -> Option<crate::AnalyzerInterface::PropUpdate> {
-        if skip != 0 {
+    ) -> Option<PropUpdate> {
+        if skip != 0 || data.is_empty() {
             return None;
         }
-        if data.len() == 0 {
-            return None;
-        }
-        let mut update;
-        if rev {
-            self.resp_buf.append(data);
-            self.resp_updated = false;
-            let lsm = Rc::clone(&self.resp_lsm);
-            let mut lsm = lsm.borrow_mut();
-            let (_, done) = lsm.lsm_run(self);
-            self.resp_done = done;
-            if self.resp_updated {
-                update = PropUpdate::new(PropUpdateType::Merge, self.resp_map.as_ref().unwrap());
-                self.resp_updated = false;
-            }
+
+        let (buf, updated, lsm, done, map) = if rev {
+            (
+                &mut self.resp_buf,
+                &mut self.resp_updated,
+                &self.resp_lsm,
+                &mut self.resp_done,
+                &self.resp_map,
+            )
         } else {
-            self.req_buf.append(data);
-            self.req_updated = false;
-            let lsm = Rc::clone(&self.req_lsm);
-            let mut lsm = lsm.borrow_mut();
-            let (_, done) = lsm.lsm_run(self);
-            self.req_done = done;
-            if self.req_updated {
-                update = PropUpdate::new(PropUpdateType::Merge, self.req_map.as_ref().unwrap());
-                self.req_updated = false;
-            }
+            (
+                &mut self.req_buf,
+                &mut self.req_updated,
+                &self.req_lsm,
+                &mut self.req_done,
+                &self.req_map,
+            )
+        };
+
+        buf.append(data);
+        *updated = false;
+        let mut lsm = lsm.borrow_mut();
+        let (_, done_flag) = lsm.lsm_run(self);
+        *done = done_flag;
+
+        if *updated {
+            Some(PropUpdate::new(
+                PropUpdateType::Merge,
+                map.as_ref().unwrap(),
+            ))
+        } else {
+            None
         }
-        Some(update)
     }
 
-    fn close(&mut self, limited: bool) -> Option<crate::AnalyzerInterface::PropUpdate> {
+    fn close(&mut self, _limited: bool) -> Option<PropUpdate> {
         self.req_buf.reset();
         self.resp_buf.reset();
         self.req_map = None;
         self.resp_map = None;
-        return None;
+        None
     }
 }
 
@@ -141,13 +146,13 @@ fn parse_request_line(stream: &mut HTTPStream) -> LSMAction {
             }));
 
             stream.req_updated = true;
-            return LSMAction::Next;
+            LSMAction::Next
         }
         None => LSMAction::Pause,
     }
 }
 
-pub fn parse_request_headers(stream: &mut HTTPStream) -> LSMAction {
+fn parse_request_headers(stream: &mut HTTPStream) -> LSMAction {
     let (action, header_map) = parse_headers(&mut stream.req_buf);
 
     if action == LSMAction::Next {
@@ -155,18 +160,6 @@ pub fn parse_request_headers(stream: &mut HTTPStream) -> LSMAction {
             req_map["headers"] = header_map.unwrap_or(JsonValue::Null);
         }
         stream.req_updated = true;
-    }
-    action
-}
-
-fn prase_response_header(stream: &mut HTTPStream) -> LSMAction {
-    let (action, header_map) = parse_headers(&mut stream.resp_buf);
-
-    if action == LSMAction::Next {
-        if let Some(resp_map) = stream.resp_map.as_mut() {
-            resp_map["headers"] = header_map.unwrap_or(JsonValue::Null);
-        }
-        stream.resp_updated = true;
     }
     action
 }
@@ -191,24 +184,31 @@ fn parse_response_line(stream: &mut HTTPStream) -> LSMAction {
                 return LSMAction::Cancel;
             }
 
-            stream.req_map = new_prop_map(json!({
+            stream.resp_map = new_prop_map(json!({
                 "status": status,
                 "version": version,
             }));
 
-            stream.req_updated = true;
-            return LSMAction::Next;
+            stream.resp_updated = true;
+            LSMAction::Next
         }
         None => LSMAction::Pause,
     }
 }
 
-fn parse_response_header(stream: &mut HTTPStream) -> LSMAction {
+fn parse_response_headers(stream: &mut HTTPStream) -> LSMAction {
     let (action, header_map) = parse_headers(&mut stream.resp_buf);
+
+    if action == LSMAction::Next {
+        if let Some(resp_map) = stream.resp_map.as_mut() {
+            resp_map["headers"] = header_map.unwrap_or(JsonValue::Null);
+        }
+        stream.resp_updated = true;
+    }
     action
 }
 
-pub fn parse_headers(buf: &mut ByteBuffer) -> (LSMAction, PropMap) {
+fn parse_headers(buf: &mut ByteBuffer) -> (LSMAction, PropMap) {
     let headers = match buf.get_until(b"\r\n\r\n", true, true) {
         Some(headers) => headers,
         None => return (LSMAction::Pause, None),
@@ -224,7 +224,7 @@ pub fn parse_headers(buf: &mut ByteBuffer) -> (LSMAction, PropMap) {
     }
 
     let content = &content[..content.len() - 2];
-    let mut prop_map = None;
+    let mut prop_map = new_prop_map(json!({}));
 
     for line in content.split("\r\n") {
         let content_vec: Vec<&str> = line.splitn(2, ":").collect();
@@ -235,12 +235,8 @@ pub fn parse_headers(buf: &mut ByteBuffer) -> (LSMAction, PropMap) {
         let key = content_vec[0].trim();
         let value = content_vec[1].trim();
 
-        if prop_map.is_none() {
-            prop_map = new_prop_map(json!({ key: value }));
-        } else {
-            if let Some(prop_map) = prop_map.as_mut() {
-                prop_map[key] = json!(value);
-            }
+        if let Some(prop_map) = prop_map.as_mut() {
+            prop_map[key] = json!(value);
         }
     }
 
