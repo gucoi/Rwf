@@ -13,8 +13,7 @@ impl Engine {
     pub fn new(config: Config) -> Self {
         let mut worker_count = config.get_workers();
         if worker_count <= 0 {
-            worker_count = num_cpus::get();
+            worker_count = num_cpus::get() as i32;
         }
-
     }
 }

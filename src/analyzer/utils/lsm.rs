@@ -1,5 +1,3 @@
-use crate::AnalyzerInterface::TCPStream;
-
 pub enum LSMAction {
     Pause,
     Next,
@@ -18,34 +16,14 @@ impl PartialEq for LSMAction {
         }
     }
 }
-pub struct LineStateMachine<T: TCPStream> {
+
+pub struct LineStateMachine<T> {
     steps: Vec<Box<dyn FnMut(&mut T) -> LSMAction>>,
     index: usize,
     cancelled: bool,
 }
 
-pub fn LSMRun<T: TCPStream>(lsm: &mut LineStateMachine<T>, stream: &mut T) -> (bool, bool) {
-    if lsm.index >= lsm.steps.len() {
-        return (lsm.cancelled, true);
-    }
-
-    let mut actions = lsm.steps.iter_mut().skip(lsm.index);
-
-    while let Some(action) = actions.next() {
-        match action(stream) {
-            LSMAction::Pause => return (false, false),
-            LSMAction::Next => lsm.index += 1,
-            LSMAction::Reset => lsm.index = 0,
-            LSMAction::Cancel => {
-                lsm.cancelled = true;
-                return (true, true);
-            }
-        }
-    }
-    (false, true)
-}
-
-impl<T: TCPStream> LineStateMachine<T> {
+impl<T> LineStateMachine<T> {
     pub fn new(steps: Vec<Box<dyn FnMut(&mut T) -> LSMAction>>) -> Self {
         LineStateMachine {
             steps,
@@ -57,5 +35,26 @@ impl<T: TCPStream> LineStateMachine<T> {
     pub fn reset(&mut self) {
         self.index = 0;
         self.cancelled = false;
+    }
+
+    pub fn lsm_run(&mut self, stream: &mut T) -> (bool, bool) {
+        if self.index >= self.steps.len() {
+            return (self.cancelled, true);
+        }
+
+        let mut actions = self.steps.iter_mut().skip(self.index);
+
+        while let Some(action) = actions.next() {
+            match action(stream) {
+                LSMAction::Pause => return (false, false),
+                LSMAction::Next => self.index += 1,
+                LSMAction::Reset => self.index = 0,
+                LSMAction::Cancel => {
+                    self.cancelled = true;
+                    return (true, true);
+                }
+            }
+        }
+        (false, true)
     }
 }

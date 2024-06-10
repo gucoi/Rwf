@@ -18,7 +18,7 @@ impl ByteBuffer {
         self.buf.len()
     }
 
-    pub fn index(self, sep: &[u8]) -> Option<usize> {
+    pub fn index(&self, sep: &[u8]) -> Option<usize> {
         self.buf.windows(sep.len()).position(|window| window == sep)
     }
 
@@ -34,10 +34,14 @@ impl ByteBuffer {
 
         Some(data)
     }
-
-    pub fn get_string(&self, len: usize, consume: bool) -> Result<&str, Box<dyn Error>> {
+    pub fn get_string(&mut self, len: usize, consume: bool) -> Result<&str, Box<dyn Error>> {
         match self.get(len, consume) {
-            Some(data) => from_utf8(&data).map_err(|err| err.into()),
+            Some(data) => {
+                let string_data = from_utf8(data.as_ref())
+                    .map_err(|err| err.into())
+                    .and_then(|s| Ok(Cow::Borrowed(s)));
+                Ok(string_data)
+            }
             None => Err("Insufficient data".into()),
         }
     }
@@ -102,7 +106,7 @@ impl ByteBuffer {
     }
 
     pub fn reset(&mut self) {
-        drop(self.buf)
+        self.buf.clear()
     }
 }
 

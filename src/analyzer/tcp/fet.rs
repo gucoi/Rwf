@@ -51,8 +51,8 @@ impl<T: Logger> TCPStream for FetStream<T> {
 
         let exempt = (ex1 <= 3.4 || ex1 >= 4.6) || ex2 || ex3 > 0.5 || ex4 > 20 || ex5;
         Some(PropUpdate::new(
-            &PropUpdateType::Replace,
-            &mut new_prop_map(json!({
+            PropUpdateType::Replace,
+            new_prop_map(json!({
                     "ex1": ex1,
                     "ex2": ex2,
                     "ex3": ex3,
@@ -60,6 +60,7 @@ impl<T: Logger> TCPStream for FetStream<T> {
                     "ex5": ex5,
                     "yes" :!exempt
             }))
+            .as_ref()
             .unwrap(),
         ))
     }
