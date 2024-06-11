@@ -8,9 +8,6 @@ use crate::AnalyzerInterface::{new_prop_map, Logger, PropMap};
 use crate::ByteBuffer::ByteBuffer;
 use crate::LSM::LSMContext;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 pub struct HTTPAnalyzer {}
 
 impl HTTPAnalyzer {
@@ -31,12 +28,14 @@ pub struct HTTPStream {
     req_buf: ByteBuffer,
     req_lsm: LineStateMachine,
     req_done: bool,
+    req_msg_len: usize,
 
     resp_map: PropMap,
     resp_updated: bool,
     resp_buf: ByteBuffer,
     resp_lsm: LineStateMachine,
     resp_done: bool,
+    resp_msg_len: usize,
 }
 
 impl HTTPStream {
@@ -51,6 +50,7 @@ impl HTTPStream {
                 Box::new(parse_request_headers),
             ]),
             req_done: false,
+            req_msg_len: 0,
             resp_buf: ByteBuffer::new(),
             resp_map: None,
             resp_updated: false,
@@ -59,6 +59,7 @@ impl HTTPStream {
                 Box::new(parse_response_headers),
             ]),
             resp_done: false,
+            resp_msg_len: 0,
         }
     }
 }
@@ -76,28 +77,30 @@ impl TCPStream for HTTPStream {
             return None;
         }
 
-        let (buf, updated, lsm, done, map) = if rev {
+        let (buf, updated, lsm, done, map, msg_len) = if rev {
             (
                 &mut self.resp_buf,
                 &mut self.resp_updated,
-                &self.resp_lsm,
+                &mut self.resp_lsm,
                 &mut self.resp_done,
-                &self.resp_map,
+                &mut self.resp_map,
+                &mut self.resp_msg_len,
             )
         } else {
             (
                 &mut self.req_buf,
                 &mut self.req_updated,
-                &self.req_lsm,
+                &mut self.req_lsm,
                 &mut self.req_done,
-                &self.req_map,
+                &mut self.req_map,
+                &mut self.req_msg_len,
             )
         };
 
         buf.append(data);
         *updated = false;
-        let mut lsm = lsm.borrow_mut();
-        let (_, done_flag) = lsm.lsm_run(self);
+        let mut ctx = LSMContext::new(buf, done, updated, map, msg_len);
+        let (_, done_flag) = lsm.lsm_run(&mut ctx);
         *done = done_flag;
 
         if *updated {
