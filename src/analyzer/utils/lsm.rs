@@ -1,3 +1,6 @@
+use crate::AnalyzerInterface::{PropMap}
+use crate::ByteBuffer::ByteBuffer;
+
 pub enum LSMAction {
     Pause,
     Next,
@@ -5,26 +8,49 @@ pub enum LSMAction {
     Cancel,
 }
 
-impl PartialEq for LSMAction {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (LSMAction::Next, LSMAction::Next)
-            | (LSMAction::Pause, LSMAction::Pause)
-            | (LSMAction::Reset, LSMAction::Reset)
-            | (LSMAction::Cancel, LSMAction::Cancel) => true,
-            _ => false,
+pub struct LSMContext<'a> {
+    pub buf: &'a mut ByteBuffer,
+    pub done_flag: &'a mut bool,
+    pub update_flag: &'a mut bool,
+    pub map: &'a mut PropMap,
+    pub msg_len: &'a mut usize,
+}
+
+impl<'a> LSMContext<'a> {
+    pub fn new(buf: &'a mut ByteBuffer,
+        done_flag: &'a mut bool, update_flag: &'a mut bool,
+        map: &'a mut PropMap, msg_len: &'a mut usize
+    )  -> LSMContext<'a> {
+        Self {
+            buf,
+            done_flag,
+            update_flag,
+            map,
+            msg_len
         }
     }
 }
 
-pub struct LineStateMachine<T> {
-    steps: Vec<Box<dyn FnMut(&mut T) -> LSMAction>>,
+impl PartialEq for LSMAction {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (LSMAction::Next, LSMAction::Next)
+                | (LSMAction::Pause, LSMAction::Pause)
+                | (LSMAction::Reset, LSMAction::Reset)
+                | (LSMAction::Cancel, LSMAction::Cancel)
+        )
+    }
+}
+
+pub struct LineStateMachine {
+    steps: Vec<Box<dyn FnMut(&mut LSMContext) -> LSMAction>>,
     index: usize,
     cancelled: bool,
 }
 
-impl<T> LineStateMachine<T> {
-    pub fn new(steps: Vec<Box<dyn FnMut(&mut T) -> LSMAction>>) -> Self {
+impl LineStateMachine {
+    pub fn new(steps: Vec<Box<dyn FnMut(&mut LSMContext) -> LSMAction>>) -> Self {
         LineStateMachine {
             steps,
             index: 0,
@@ -37,24 +63,18 @@ impl<T> LineStateMachine<T> {
         self.cancelled = false;
     }
 
-    pub fn lsm_run(&mut self, stream: &mut T) -> (bool, bool) {
-        if self.index >= self.steps.len() {
-            return (self.cancelled, true);
-        }
-
-        let mut actions = self.steps.iter_mut().skip(self.index);
-
-        while let Some(action) = actions.next() {
-            match action(stream) {
+    pub fn lsm_run(&mut self, context: &mut LSMContext) -> (bool, bool) {
+        while self.index < self.steps.len() {
+            match (self.steps[self.index])() {
                 LSMAction::Pause => return (false, false),
                 LSMAction::Next => self.index += 1,
-                LSMAction::Reset => self.index = 0,
+                LSMAction::Reset => self.reset(),
                 LSMAction::Cancel => {
                     self.cancelled = true;
                     return (true, true);
                 }
             }
         }
-        (false, true)
+        (self.cancelled, true)
     }
 }

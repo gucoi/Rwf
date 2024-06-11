@@ -1,10 +1,8 @@
 use crate::AnalyzerInterface::{Logger, PropMap, PropUpdate, PropUpdateType, TCPStream, UDPStream};
 use crate::ByteBuffer::ByteBuffer;
-use crate::LSM::{LSMAction, LineStateMachine};
+use crate::LSM::{LSMAction, LSMContext, LineStateMachine};
 use serde_json::{json, Value};
-use std::cell::RefCell;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::rc::Rc;
 use trust_dns_proto::{
     op::{Message, MessageType, Query},
     rr::RData,
@@ -26,13 +24,13 @@ pub struct DNSTCPStream {
     req_buf: ByteBuffer,
     req_map: PropMap,
     req_update: bool,
-    req_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    req_lsm: LineStateMachine,
     req_done: bool,
 
     resp_buf: ByteBuffer,
     resp_map: PropMap,
     resp_update: bool,
-    resp_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    resp_lsm: LineStateMachine,
     resp_done: bool,
 
     req_msg_len: usize,
@@ -54,28 +52,32 @@ impl TCPStream for DNSTCPStream {
             return None;
         }
 
-        let (buf, update_flag, lsm, done_flag, map) = if rev {
+        let (buf, update_flag, lsm, done_flag, map, msg_len) = if rev {
             (
                 &mut self.resp_buf,
                 &mut self.resp_update,
-                Rc::clone(&self.resp_lsm),
+                &mut self.resp_lsm,
                 &mut self.resp_done,
                 &mut self.resp_map,
+                &mut self.resp_msg_len,
             )
         } else {
             (
                 &mut self.req_buf,
                 &mut self.req_update,
-                Rc::clone(&self.req_lsm),
+                &mut self.req_lsm,
                 &mut self.req_done,
                 &mut self.req_map,
+                &mut self.req_msg_len,
             )
         };
 
         buf.append(data);
         *update_flag = false;
-        let mut lsm = lsm.borrow_mut();
-        let (_, done) = lsm.lsm_run(self);
+
+        let mut context = LSMContext::new(buf, done_flag, update_flag, map, msg_len);
+
+        let (_, done) = lsm.lsm_run(&mut context);
         *done_flag = done;
 
         if *update_flag {
@@ -109,14 +111,8 @@ impl DNSTCPStream {
             logger,
             req_buf: ByteBuffer::new(),
             resp_buf: ByteBuffer::new(),
-            req_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
-                Box::new(get_req_message_len),
-                Box::new(get_req_message),
-            ]))),
-            resp_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
-                Box::new(get_resp_message_len),
-                Box::new(get_resp_message),
-            ]))),
+            req_lsm: LineStateMachine::new(vec![Box::new(get_message_len), Box::new(get_message)]),
+            resp_lsm: LineStateMachine::new(vec![Box::new(get_message_len), Box::new(get_message)]),
             req_map: None,
             resp_map: None,
             req_done: false,
@@ -129,43 +125,20 @@ impl DNSTCPStream {
     }
 }
 
-fn get_req_message_len(stream: &mut DNSTCPStream) -> LSMAction {
-    if let Some(data) = stream.req_buf.get(2, true) {
-        stream.req_msg_len = (data[0] as usize) << 8 | data[1] as usize;
+fn get_message_len(ctx: &mut LSMContext) -> LSMAction {
+    if let Some(data) = ctx.buf.get(2, true) {
+        *ctx.msg_len = (data[0] as usize) << 8 | data[1] as usize;
         LSMAction::Next
     } else {
         LSMAction::Pause
     }
 }
 
-fn get_req_message(stream: &mut DNSTCPStream) -> LSMAction {
-    if let Some(data) = stream.req_buf.get(stream.req_msg_len, true) {
+fn get_message(ctx: &mut LSMContext) -> LSMAction {
+    if let Some(data) = ctx.buf.get(*ctx.msg_len, true) {
         if let Some(m) = parse_dns_message(&data) {
-            stream.req_map = m;
-            stream.req_done = true;
-            LSMAction::Reset
-        } else {
-            LSMAction::Cancel
-        }
-    } else {
-        LSMAction::Pause
-    }
-}
-
-fn get_resp_message_len(stream: &mut DNSTCPStream) -> LSMAction {
-    if let Some(data) = stream.resp_buf.get(2, true) {
-        stream.resp_msg_len = (data[0] as usize) << 8 | data[1] as usize;
-        LSMAction::Next
-    } else {
-        LSMAction::Pause
-    }
-}
-
-fn get_resp_message(stream: &mut DNSTCPStream) -> LSMAction {
-    if let Some(data) = stream.resp_buf.get(stream.resp_msg_len, true) {
-        if let Some(m) = parse_dns_message(&data) {
-            stream.resp_map = m;
-            stream.resp_update = true;
+            *ctx.map = m;
+            *ctx.update_flag = true;
             LSMAction::Reset
         } else {
             LSMAction::Cancel

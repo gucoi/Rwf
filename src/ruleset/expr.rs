@@ -40,7 +40,7 @@ pub struct ExprRuleset {
 }
 
 impl CompiledExprRule {
-    pub fn analyzers(info: RulesetInterface::StreamInfo) {}
+    pub fn analyzers(_info: RulesetInterface::StreamInfo) {}
 }
 
 impl ExprRuleset {
@@ -48,7 +48,7 @@ impl ExprRuleset {
         &self.ans
     }
 
-    fn expr_rule_set_match(&self, info: RulesetInterface::StreamInfo) {}
+    fn expr_rule_set_match(&self, _info: RulesetInterface::StreamInfo) {}
 }
 
 impl<'a> RulesetInterface::StreamInfo<'a> {
