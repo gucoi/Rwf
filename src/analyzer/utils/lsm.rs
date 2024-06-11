@@ -63,9 +63,9 @@ impl LineStateMachine {
         self.cancelled = false;
     }
 
-    pub fn lsm_run(&mut self, context: &mut LSMContext) -> (bool, bool) {
+    pub fn lsm_run(&mut self, ctx: &mut LSMContext) -> (bool, bool) {
         while self.index < self.steps.len() {
-            match (self.steps[self.index])() {
+            match (self.steps[self.index])(ctx) {
                 LSMAction::Pause => return (false, false),
                 LSMAction::Next => self.index += 1,
                 LSMAction::Reset => self.reset(),

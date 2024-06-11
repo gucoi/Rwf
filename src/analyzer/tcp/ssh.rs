@@ -2,11 +2,9 @@ use crate::AnalyzerInterface::{
     new_prop_map, Logger, PropMap, PropUpdate, PropUpdateType, TCPStream,
 };
 use crate::ByteBuffer::ByteBuffer;
-use crate::LSM::{LSMAction, LineStateMachine};
+use crate::LSM::{LSMAction, LSMContext, LineStateMachine};
 use serde_json::{json, Value as JsonValue};
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct SSHAnalyzer {}
 
@@ -27,13 +25,13 @@ pub struct SSHStream {
     client_buf: ByteBuffer,
     client_map: PropMap,
     client_update: bool,
-    client_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    client_lsm: LineStateMachine,
     client_done: bool,
 
     server_buf: ByteBuffer,
     server_map: PropMap,
     server_update: bool,
-    server_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    server_lsm: LineStateMachine,
     server_done: bool,
 }
 
@@ -44,17 +42,13 @@ impl SSHStream {
             client_buf: ByteBuffer::new(),
             client_map: None,
             client_update: false,
-            client_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![Box::new(
-                parse_client_exchange_line,
-            )]))),
+            client_lsm: LineStateMachine::new(vec![Box::new(parse_exchange_ctx)]),
             client_done: false,
 
             server_buf: ByteBuffer::new(),
             server_map: None,
             server_update: false,
-            server_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![Box::new(
-                parse_server_exchange_line,
-            )]))),
+            server_lsm: LineStateMachine::new(vec![Box::new(parse_exchange_ctx)]),
             server_done: false,
         }
     }
@@ -77,7 +71,7 @@ impl TCPStream for SSHStream {
             (
                 &mut self.server_buf,
                 &mut self.server_update,
-                Rc::clone(&self.server_lsm),
+                &mut self.server_lsm,
                 &mut self.server_done,
                 "server",
             )
@@ -85,7 +79,7 @@ impl TCPStream for SSHStream {
             (
                 &mut self.client_buf,
                 &mut self.client_update,
-                Rc::clone(&self.client_lsm),
+                &mut self.client_lsm,
                 &mut self.client_done,
                 "client",
             )
@@ -124,20 +118,8 @@ impl TCPStream for SSHStream {
     }
 }
 
-fn parse_client_exchange_line(stream: &mut SSHStream) -> LSMAction {
-    parse_exchange_line(
-        &mut stream.client_buf,
-        &mut stream.client_map,
-        &mut stream.client_update,
-    )
-}
-
-fn parse_server_exchange_line(stream: &mut SSHStream) -> LSMAction {
-    parse_exchange_line(
-        &mut stream.server_buf,
-        &mut stream.server_map,
-        &mut stream.server_update,
-    )
+fn parse_exchange_ctx(ctx: &mut LSMContext) -> LSMAction {
+    parse_exchange_line(&mut ctx.buf, &mut ctx.map, &mut ctx.update_flag)
 }
 
 fn parse_exchange_line<'a>(
