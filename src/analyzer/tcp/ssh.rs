@@ -4,7 +4,6 @@ use crate::AnalyzerInterface::{
 use crate::ByteBuffer::ByteBuffer;
 use crate::LSM::{LSMAction, LSMContext, LineStateMachine};
 use serde_json::{json, Value as JsonValue};
-use std::borrow::BorrowMut;
 
 pub struct SSHAnalyzer {}
 
@@ -27,12 +26,14 @@ pub struct SSHStream {
     client_update: bool,
     client_lsm: LineStateMachine,
     client_done: bool,
+    client_msg_len: usize,
 
     server_buf: ByteBuffer,
     server_map: PropMap,
     server_update: bool,
     server_lsm: LineStateMachine,
     server_done: bool,
+    server_msg_len: usize,
 }
 
 impl SSHStream {
@@ -44,12 +45,14 @@ impl SSHStream {
             client_update: false,
             client_lsm: LineStateMachine::new(vec![Box::new(parse_exchange_ctx)]),
             client_done: false,
+            client_msg_len: 0,
 
             server_buf: ByteBuffer::new(),
             server_map: None,
             server_update: false,
             server_lsm: LineStateMachine::new(vec![Box::new(parse_exchange_ctx)]),
             server_done: false,
+            server_msg_len: 0,
         }
     }
 }
@@ -67,13 +70,15 @@ impl TCPStream for SSHStream {
             return None;
         }
 
-        let (buf, update_flag, lsm, done_flag, map_key) = if rev {
+        let (buf, update_flag, lsm, done_flag, map_key, map, msg_len) = if rev {
             (
                 &mut self.server_buf,
                 &mut self.server_update,
                 &mut self.server_lsm,
                 &mut self.server_done,
                 "server",
+                &mut self.server_map,
+                &mut self.server_msg_len,
             )
         } else {
             (
@@ -82,13 +87,16 @@ impl TCPStream for SSHStream {
                 &mut self.client_lsm,
                 &mut self.client_done,
                 "client",
+                &mut self.client_map,
+                &mut self.client_msg_len,
             )
         };
 
+        let mut ctx = LSMContext::new(buf, done_flag, update_flag, map, msg_len);
+
         buf.append(data);
         *update_flag = false;
-        let mut lsm = lsm.borrow_mut();
-        let (_, done) = lsm.lsm_run(self);
+        let (_, done) = lsm.lsm_run(&mut ctx);
         *done_flag = done;
 
         if *update_flag {

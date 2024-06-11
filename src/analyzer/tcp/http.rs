@@ -6,6 +6,7 @@ use crate::AnalyzerInterface::PropUpdateType;
 use crate::AnalyzerInterface::TCPStream;
 use crate::AnalyzerInterface::{new_prop_map, Logger, PropMap};
 use crate::ByteBuffer::ByteBuffer;
+use crate::LSM::LSMContext;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -28,13 +29,13 @@ pub struct HTTPStream {
     req_map: PropMap,
     req_updated: bool,
     req_buf: ByteBuffer,
-    req_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    req_lsm: LineStateMachine,
     req_done: bool,
 
     resp_map: PropMap,
     resp_updated: bool,
     resp_buf: ByteBuffer,
-    resp_lsm: Rc<RefCell<LineStateMachine<Self>>>,
+    resp_lsm: LineStateMachine,
     resp_done: bool,
 }
 
@@ -45,18 +46,18 @@ impl HTTPStream {
             req_buf: ByteBuffer::new(),
             req_map: None,
             req_updated: false,
-            req_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
+            req_lsm: LineStateMachine::new(vec![
                 Box::new(parse_request_line),
                 Box::new(parse_request_headers),
-            ]))),
+            ]),
             req_done: false,
             resp_buf: ByteBuffer::new(),
             resp_map: None,
             resp_updated: false,
-            resp_lsm: Rc::new(RefCell::new(LineStateMachine::new(vec![
+            resp_lsm: LineStateMachine::new(vec![
                 Box::new(parse_response_line),
                 Box::new(parse_response_headers),
-            ]))),
+            ]),
             resp_done: false,
         }
     }
@@ -118,8 +119,8 @@ impl TCPStream for HTTPStream {
     }
 }
 
-fn parse_request_line(stream: &mut HTTPStream) -> LSMAction {
-    match stream.req_buf.get_until(b"\r\n", true, true) {
+fn parse_request_line(ctx: &mut LSMContext) -> LSMAction {
+    match ctx.buf.get_until(b"\r\n", true, true) {
         Some(value) => {
             let value_str = match String::from_utf8(value.to_vec()) {
                 Ok(s) => s,
@@ -139,33 +140,33 @@ fn parse_request_line(stream: &mut HTTPStream) -> LSMAction {
                 return LSMAction::Cancel;
             }
 
-            stream.req_map = new_prop_map(json!({
+            *ctx.map = new_prop_map(json!({
                 "method": method,
                 "path": path,
                 "version": version,
             }));
 
-            stream.req_updated = true;
+            *ctx.update = true;
             LSMAction::Next
         }
         None => LSMAction::Pause,
     }
 }
 
-fn parse_request_headers(stream: &mut HTTPStream) -> LSMAction {
-    let (action, header_map) = parse_headers(&mut stream.req_buf);
+fn parse_request_headers(ctx: &mut LSMContext) -> LSMAction {
+    let (action, header_map) = parse_headers(&mut ctx.buf);
 
     if action == LSMAction::Next {
-        if let Some(req_map) = stream.req_map.as_mut() {
+        if let Some(req_map) = ctx.map.as_mut() {
             req_map["headers"] = header_map.unwrap_or(JsonValue::Null);
         }
-        stream.req_updated = true;
+        *ctx.update_flag = true;
     }
     action
 }
 
-fn parse_response_line(stream: &mut HTTPStream) -> LSMAction {
-    match stream.resp_buf.get_until(b"\r\n", true, true) {
+fn parse_response_line(ctx: &mut LSMContext) -> LSMAction {
+    match ctx.buf.get_until(b"\r\n", true, true) {
         Some(value) => {
             let value_str = match String::from_utf8(value.to_vec()) {
                 Ok(s) => s,
@@ -184,26 +185,26 @@ fn parse_response_line(stream: &mut HTTPStream) -> LSMAction {
                 return LSMAction::Cancel;
             }
 
-            stream.resp_map = new_prop_map(json!({
+            *ctx.map = new_prop_map(json!({
                 "status": status,
                 "version": version,
             }));
 
-            stream.resp_updated = true;
+            *ctx.update_flag = true;
             LSMAction::Next
         }
         None => LSMAction::Pause,
     }
 }
 
-fn parse_response_headers(stream: &mut HTTPStream) -> LSMAction {
-    let (action, header_map) = parse_headers(&mut stream.resp_buf);
+fn parse_response_headers(ctx: &mut LSMContext) -> LSMAction {
+    let (action, header_map) = parse_headers(&mut ctx.buf);
 
     if action == LSMAction::Next {
-        if let Some(resp_map) = stream.resp_map.as_mut() {
+        if let Some(resp_map) = ctx.map.as_mut() {
             resp_map["headers"] = header_map.unwrap_or(JsonValue::Null);
         }
-        stream.resp_updated = true;
+        *ctx.update = true;
     }
     action
 }
