@@ -89,7 +89,7 @@ fn printable_percentage(bytes: &[u8]) -> f32 {
         return 0.0;
     }
 
-    let printable_count = bytes.iter().filter(|&&b| is_printable(b)).count() as f32;
+    let printable_count = bytes.iter().filter(|&b| is_printable(b)).count() as f32;
     printable_count / bytes.len() as f32
 }
 
