@@ -4,6 +4,7 @@ use crate::AnalyzerInterface::{
 use crate::ByteBuffer::ByteBuffer;
 use crate::LSM::{LSMAction, LSMContext, LineStateMachine};
 use serde_json::{json, Value as JsonValue};
+use std::mem;
 
 pub struct SSHAnalyzer {}
 
@@ -92,10 +93,10 @@ impl TCPStream for SSHStream {
             )
         };
 
-        let mut ctx = LSMContext::new(buf, done_flag, update_flag, map, msg_len);
-
         buf.append(data);
         *update_flag = false;
+
+        let mut ctx = LSMContext::new(buf, done_flag, update_flag, map, msg_len);
         let (_, done) = lsm.lsm_run(&mut ctx);
         *done_flag = done;
 

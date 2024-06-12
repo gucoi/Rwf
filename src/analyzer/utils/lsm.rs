@@ -1,4 +1,4 @@
-use crate::AnalyzerInterface::{PropMap}
+use crate::AnalyzerInterface::PropMap;
 use crate::ByteBuffer::ByteBuffer;
 
 pub enum LSMAction {
@@ -17,16 +17,19 @@ pub struct LSMContext<'a> {
 }
 
 impl<'a> LSMContext<'a> {
-    pub fn new(buf: &'a mut ByteBuffer,
-        done_flag: &'a mut bool, update_flag: &'a mut bool,
-        map: &'a mut PropMap, msg_len: &'a mut usize
-    )  -> LSMContext<'a> {
+    pub fn new(
+        buf: &'a mut ByteBuffer,
+        done_flag: &'a mut bool,
+        update_flag: &'a mut bool,
+        map: &'a mut PropMap,
+        msg_len: &'a mut usize,
+    ) -> LSMContext<'a> {
         Self {
             buf,
             done_flag,
             update_flag,
             map,
-            msg_len
+            msg_len,
         }
     }
 }

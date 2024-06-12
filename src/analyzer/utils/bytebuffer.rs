@@ -34,13 +34,13 @@ impl ByteBuffer {
 
         Some(data)
     }
-    pub fn get_string(&mut self, len: usize, consume: bool) -> Result<&str, Box<dyn Error>> {
+    pub fn get_string(&mut self, len: usize, consume: bool) -> Result<String, Box<dyn Error>> {
         match self.get(len, consume) {
             Some(data) => {
                 let string_data = from_utf8(data.as_ref())
-                    .map_err(|err| err.into())
-                    .and_then(|s| Ok(Cow::Borrowed(s)));
-                Ok(string_data)
+                    .map(|s| s.to_string())
+                    .map_err(|err| err.into());
+                string_data
             }
             None => Err("Insufficient data".into()),
         }
@@ -84,7 +84,7 @@ impl ByteBuffer {
 
     pub fn get_until(&mut self, sep: &[u8], include_sep: bool, consume: bool) -> Option<Cow<[u8]>> {
         if let Some(idx) = self.index(sep) {
-            let len = if include_sep { idx + sep.len() } else { idx };
+            let _len = if include_sep { idx + sep.len() } else { idx };
             self.get(idx, consume)
         } else {
             None
