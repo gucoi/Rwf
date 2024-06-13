@@ -1,12 +1,10 @@
+use clap::Error;
 use serde::Serialize;
 
-use crate::AnalyzerInterface;
+use crate::AnalyzerInterface::{Analyzer, CombinedPropMap};
+use async_trait::async_trait;
+use std::collections::HashMap;
 use std::net::IpAddr;
-
-pub trait Ruleset {
-    fn analyzers(&self, stream_info: &StreamInfo);
-    fn ruleset_match(&self, stream_info: &StreamInfo);
-}
 
 pub enum Action {
     Maybe,
@@ -52,7 +50,7 @@ pub struct StreamInfo<'a> {
     pub dst_ip: IpAddr,
     pub src_port: u16,
     pub dst_port: u16,
-    pub props: AnalyzerInterface::CombinedPropMap<'a>,
+    pub props: CombinedPropMap<'a>,
 }
 
 impl<'a> StreamInfo<'a> {
@@ -65,6 +63,26 @@ impl<'a> StreamInfo<'a> {
     }
 }
 
+#[async_trait]
+pub trait ModifierInstance {}
+
+#[async_trait]
+pub trait Modifier {
+    async fn new_instance(args: HashMap<String, String>) -> Box<dyn ModifierInstance>;
+}
+
+#[async_trait]
+pub trait Ruleset<'a> {
+    fn analyzers(&self, stream_info: &StreamInfo) -> &[Box<dyn Analyzer>];
+    async fn match_rule(&self, stream_info: &'a StreamInfo) -> MatchResult;
+}
+
 pub struct MatchResult {
-    action: Action,
+    pub action: Action,
+    pub mod_instance: Box<dyn ModifierInstance>,
+}
+
+pub trait Logger {
+    fn log(stream_info: StreamInfo, name: String, err: Error);
+    fn match_error(stream_info: StreamInfo, name: String, err: Error);
 }
