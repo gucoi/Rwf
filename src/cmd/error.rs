@@ -101,7 +101,7 @@ impl EngineLogger {
         stream_id: i64,
         name: &str,
         format: &str,
-        args: &[&dyn std::fmt::Debug],
+        _args: &[&dyn std::fmt::Debug],
     ) {
         debug!(
             "analyzer debug message - id: {}, name: {}, msg: {}",

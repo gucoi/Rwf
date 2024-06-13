@@ -137,7 +137,7 @@ fn get_message_len(ctx: &mut LSMContext) -> LSMAction {
 fn get_message(ctx: &mut LSMContext) -> LSMAction {
     if let Some(data) = ctx.buf.get(*ctx.msg_len, true) {
         if let Some(m) = parse_dns_message(&data) {
-            *ctx.map = m;
+            *ctx.map = Some(m);
             *ctx.update_flag = true;
             LSMAction::Reset
         } else {
@@ -148,7 +148,7 @@ fn get_message(ctx: &mut LSMContext) -> LSMAction {
     }
 }
 
-fn parse_dns_message(data: &[u8]) -> Option<PropMap> {
+fn parse_dns_message(data: &[u8]) -> PropMap {
     let dns = Message::from_vec(data).ok()?;
     let header = dns.header();
 

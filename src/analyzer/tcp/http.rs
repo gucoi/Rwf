@@ -149,7 +149,7 @@ fn parse_request_line(ctx: &mut LSMContext) -> LSMAction {
                 "version": version,
             }));
 
-            *ctx.update = true;
+            *ctx.update_flag = true;
             LSMAction::Next
         }
         None => LSMAction::Pause,
@@ -207,7 +207,7 @@ fn parse_response_headers(ctx: &mut LSMContext) -> LSMAction {
         if let Some(resp_map) = ctx.map.as_mut() {
             resp_map["headers"] = header_map.unwrap_or(JsonValue::Null);
         }
-        *ctx.update = true;
+        *ctx.update_flag = true;
     }
     action
 }
