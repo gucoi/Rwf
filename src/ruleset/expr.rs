@@ -52,13 +52,14 @@ pub struct CompiledExprRule {
 }
 
 #[async_trait]
-impl<'a> Ruleset<'a> for ExprRuleset {
-    async fn match_rule(&self, info: &'a StreamInfo) -> MatchResult {
+impl Ruleset for ExprRuleset {
+    async fn match_rule(&self, info: &StreamInfo) -> MatchResult {
         let json_env = stream_info_to_expr_env(info).unwrap();
         let mut env = HashMap::new();
         for (key, value) in json_env.as_object().unwrap() {
             env.insert(key.clone(), Value::from(value.clone()));
         }
+
         let context = Context::from(env);
 
         for rule in &self.rules {

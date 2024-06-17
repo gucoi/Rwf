@@ -31,7 +31,9 @@ mod io {
 mod engine {
     pub mod engine;
     pub mod interface;
+    pub mod tcp;
     pub mod udp;
+    pub mod worker;
 }
 
 pub use analyzer::interface as AnalyzerInterface;

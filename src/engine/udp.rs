@@ -10,20 +10,13 @@ pub struct UDPContext {
     packet: [u8],
 }
 
-pub struct UDPStreamFactory<T>
-where
-    T: Ruleset,
-{
+pub struct UDPStreamFactory {
     worker_id: i32,
-    logger: Box<dyn Logger>,
 
-    ruleset_mutex: Mutex<T>,
-    ruleset: T,
+    ruleset_mutex: Mutex<Box<dyn Ruleset>>,
+    ruleset: dyn Ruleset,
 }
 
-impl<T> UDPStreamFactory<T>
-where
-    T: Ruleset,
-{
+impl UDPStreamFactory {
     pub fn new() {}
 }
