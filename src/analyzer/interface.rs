@@ -1,6 +1,8 @@
 use serde_json::Value as JsonValue;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::rc::Rc;
 
 pub trait Analyzer {
     fn name(&self) -> &str;
@@ -60,46 +62,48 @@ where
     fn new_udp(info: UDPInfo, logger: U) -> T;
 }
 
-pub struct CombinedPropMap<'a>(HashMap<String, &'a PropMap>);
+pub struct CombinedPropMap(HashMap<String, Rc<RefCell<PropMap>>>);
 pub type PropMap = Option<JsonValue>;
 
 pub fn new_prop_map(value: JsonValue) -> PropMap {
     Some(value).filter(|v| !v.is_null())
 }
 
-pub fn get_from_prop_map<'a>(mp: &'a PropMap, key: &str) -> Option<&'a JsonValue> {
-    mp.as_ref().and_then(|value| {
-        let pointer = format!("/{}", key.replace(".", "/"));
-        value.pointer(&pointer)
-    })
+pub fn get_from_prop_map(mp: PropMap, key: &str) -> Option<JsonValue> {
+    if let Some(prop_map) = mp {
+        return prop_map.get(key).cloned();
+    }
+    None
 }
 
-impl<'a> Iterator for CombinedPropMap<'a> {
-    type Item = (String, &'a serde_json::Value);
+impl Iterator for CombinedPropMap {
+    type Item = (String, Rc<RefCell<PropMap>>);
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.iter().next().map(|(key, prop_map)| {
-            let value = prop_map.as_ref().unwrap();
-            (key.clone(), value)
-        })
+        let mut iter = self.0.iter_mut();
+        iter.next()
+            .map(|(key, prop_map)| (key.clone(), Rc::clone(prop_map)))
     }
 }
 
-impl<'a> CombinedPropMap<'a> {
+impl CombinedPropMap {
     pub fn new() -> Self {
         CombinedPropMap(HashMap::new())
     }
 
-    pub fn get(&self, an: &str, key: &str) -> Option<&serde_json::Value> {
-        match self.0.get(an).unwrap() {
-            Some(value) => value.get(key),
-            None => None,
+    pub fn get(&self, an: &str, key: &str) -> PropMap {
+        if let Some(value) = self.0.get(an) {
+            let value = value.borrow();
+            if let Some(value) = value.as_ref() {
+                return value.get(key).cloned();
+            }
         }
+        None
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (String, &serde_json::Value)> {
+    pub fn iter(&self) -> impl Iterator<Item = (String, Rc<RefCell<PropMap>>)> {
         self.0
             .iter()
-            .map(|(key, prop_map)| (key.clone(), prop_map.as_ref().unwrap()))
+            .map(|(key, prop_map)| (key.clone(), Rc::clone(prop_map)))
     }
 }
 

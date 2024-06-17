@@ -43,17 +43,17 @@ impl Protocol {
     }
 }
 
-pub struct StreamInfo<'a> {
+pub struct StreamInfo {
     pub id: i64,
     pub protocol: Protocol,
     pub src_ip: IpAddr,
     pub dst_ip: IpAddr,
     pub src_port: u16,
     pub dst_port: u16,
-    pub props: CombinedPropMap<'a>,
+    pub props: CombinedPropMap,
 }
 
-impl<'a> StreamInfo<'a> {
+impl StreamInfo {
     pub fn src_string(&self) -> String {
         format!("{}:{}", self.src_ip, self.src_port)
     }
@@ -72,9 +72,9 @@ pub trait Modifier {
 }
 
 #[async_trait]
-pub trait Ruleset<'a> {
+pub trait Ruleset {
     fn analyzers(&self, stream_info: &StreamInfo) -> &[Box<dyn Analyzer>];
-    async fn match_rule(&self, stream_info: &'a StreamInfo) -> MatchResult;
+    async fn match_rule(&self, stream_info: &StreamInfo) -> MatchResult;
 }
 
 pub struct MatchResult {
